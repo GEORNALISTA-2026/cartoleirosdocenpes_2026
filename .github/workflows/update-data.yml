@@ -1,0 +1,33 @@
+name: Atualizar Dados Diariamente
+
+on:
+  schedule:
+    # Corre todos os dias às 09:00 UTC (06:00 da manhã no horário de Brasília)
+    - cron: '0 9 * * *'
+  workflow_dispatch: # Permite correr o script manualmente através de um botão no GitHub
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Permissão obrigatória para o robô poder guardar o data.json no teu repositório
+
+    steps:
+      - name: Fazer Checkout do Repositório
+        uses: actions/checkout@v3
+
+      - name: Configurar Ambiente Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Correr Script de Busca do Cartola
+        run: node fetch-cartola.js
+
+      - name: Guardar ficheiro (Commit & Push)
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data.json
+          # O comando abaixo faz commit APENAS se houver alguma diferença nova, evitando commits vazios
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Atualização diária de dados do Cartola [Automático]" && git push)
