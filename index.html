@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Nossa Liga Cartola FC</title>
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#ea580c">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="icon-192x192.png">
+
+    <!-- Tailwind CSS para estilização rápida e moderna -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Configuração do Tailwind para Modo Escuro
+        tailwind.config = {
+            darkMode: 'class',
+        }
+        
+        // Verifica a preferência de tema antes de a página carregar (evita flash branco teste)
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+
+    <!-- Lucide Icons para os ícones -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- HTML2Canvas para gerar a imagem de partilha -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        /* Loading spinner */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #f97316; /* Laranja Cartola */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        /* Loading spinner pequeno para o botão de partilhar */
+        .loader-sm {
+            border: 2px solid transparent;
+            border-top: 2px solid white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Esconde a barra de scroll das abas mas permite scroll */
+        .tabs-scroll::-webkit-scrollbar {
+            display: none;
+        }
+        .tabs-scroll {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen pb-12 bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-200">
+
+    <!-- Header -->
+    <header class="bg-orange-600 text-white shadow-md py-4 mb-6 relative">
+        <div class="container mx-auto px-4 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i data-lucide="trophy" class="w-6 h-6 sm:w-7 sm:h-7"></i>
+                <h1 class="text-xl sm:text-2xl font-bold tracking-tight truncate">Liga Cartola FC</h1>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <!-- Botão Tema Escuro/Claro -->
+                <button onclick="toggleTheme()" class="p-2 bg-orange-700/50 hover:bg-orange-700 rounded-full transition-colors" aria-label="Alternar Tema">
+                    <i data-lucide="moon" class="w-5 h-5 text-white hidden dark:block"></i>
+                    <i data-lucide="sun" class="w-5 h-5 text-white block dark:hidden"></i>
+                </button>
+                <!-- Botão Partilhar -->
+                <button id="share-btn" onclick="shareScreenshot()" class="p-2 bg-orange-700/50 hover:bg-orange-700 rounded-full transition-colors" aria-label="Partilhar no WhatsApp">
+                    <i data-lucide="share-2" class="w-5 h-5 text-white"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4">
+        
+        <!-- Área de Loading -->
+        <div id="loading" class="py-20 text-center">
+            <div class="loader mb-4"></div>
+            <p id="loading-text" class="text-gray-600 dark:text-gray-400 font-medium animate-pulse">A carregar estatísticas atualizadas...</p>
+        </div>
+
+        <!-- Mensagem de Aviso de Mock (Oculta por padrão) -->
+        <div id="mock-warning" class="hidden bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-400 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 px-4 py-3 rounded relative max-w-4xl mx-auto mb-4 text-sm text-center" role="alert">
+            <i data-lucide="info" class="w-4 h-4 inline-block mr-1 relative -top-0.5"></i>
+            <strong>Modo de Pré-visualização:</strong> A exibir dados fictícios para demonstração.
+        </div>
+
+        <!-- Navegação por Abas (Oculta por padrão até carregar) -->
+        <div id="tabs-container" class="hidden mb-6 border-b border-gray-200 dark:border-gray-700">
+            <nav class="flex overflow-x-auto tabs-scroll space-x-6 pb-2 px-2" aria-label="Tabs">
+                <button onclick="changeTab('rodada')" id="tab-rodada" class="tab-btn text-orange-600 dark:text-orange-500 border-orange-600 dark:border-orange-500 border-b-2 py-2 text-sm font-bold whitespace-nowrap transition-colors flex items-center gap-1">
+                    <i data-lucide="calendar-days" class="w-4 h-4"></i> Por Rodada
+                </button>
+                <button onclick="changeTab('premiacao')" id="tab-premiacao" class="tab-btn text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 py-2 text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1">
+                    <i data-lucide="banknote" class="w-4 h-4"></i> Premiação
+                </button>
+                <button onclick="changeTab('ranking')" id="tab-ranking" class="tab-btn text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 py-2 text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1">
+                    <i data-lucide="bar-chart-3" class="w-4 h-4"></i> Ranking
+                </button>
+            </nav>
+        </div>
+
+        <!-- Conteúdo das Abas -->
+        <div id="views-container" class="hidden">
+            
+            <!-- Container Por Rodada (Aba Padrão) -->
+            <div id="view-rodada" class="view-section max-w-4xl mx-auto pb-4">
+                <div class="mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                    <label for="rodada-select" class="font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">Selecione a Rodada:</label>
+                    <select id="rodada-select" onchange="renderRankingRodada(this.value)" class="bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-full sm:w-auto p-2.5 outline-none font-medium">
+                        <!-- Opções preenchidas via JS -->
+                    </select>
+                </div>
+                <div id="ranking-rodada-container"></div>
+            </div>
+
+            <!-- Container Premiação -->
+            <div id="view-premiacao" class="view-section hidden max-w-4xl mx-auto pb-4">
+                <div id="ranking-premiacao-container"></div>
+            </div>
+
+            <!-- Container Ranking Unificado -->
+            <div id="view-ranking" class="view-section hidden max-w-4xl mx-auto pb-4">
+                <div id="ranking-geral-container"></div>
+            </div>
+        </div>
+        
+        <!-- Mensagem de Erro (Oculta por padrão) -->
+        <div id="error-message" class="hidden bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded relative max-w-2xl mx-auto mt-8 text-center" role="alert">
+            <strong class="font-bold" id="error-title">Ops! </strong>
+            <span class="block sm:inline" id="error-text">Ocorreu um erro ao carregar os dados.</span>
+            <button onclick="fetchData()" class="mt-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                Tentar Novamente
+            </button>
+        </div>
+
+    </main>
+
+    <script>
+        // Inicializa os ícones do Lucide
+        lucide.createIcons();
+
+        // Função para formatar moeda (Cartoletas)
+        const formatMoney = (value) => {
+            if (value === undefined || value === null) return "C$ 0.00";
+            return `C$ ${value.toFixed(2)}`;
+        };
+
+        // Função para formatar pontos
+        const formatPoints = (value) => {
+            if (value === undefined || value === null) return "0.00";
+            return value.toFixed(2);
+        };
+
+        // Formata para moeda Real (BRL), suportando valores negativos
+        const formatReal = (value) => {
+            const sign = value < 0 ? '-' : '';
+            const absValue = Math.abs(value);
+            return `${sign}R$ ${absValue.toFixed(2).replace('.', ',')}`;
+        };
+
+        // Variáveis globais
+        let appData = [];
+        let maxRound = 1;
+
+        // Controla qual turno está sendo exibido na aba Premiação
+        let premiacaoTurnoAtual = 1;
+
+        // Estado da ordenação da aba Ranking
+        let rankingSortConfig = {
+            column: 'pontos', // 'pontos' ou 'patrimonio'
+            direction: 'desc' // 'desc' (maior para menor) ou 'asc' (menor para maior)
+        };
+
+        // Alterna entre o modo claro/escuro
+        function toggleTheme() {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        // --- SISTEMA DE CAPTURA E PARTILHA (WHATSAPP) ---
+        async function shareScreenshot() {
+            const activeView = document.querySelector('.view-section:not(.hidden)');
+            if(!activeView) return;
+
+            const shareBtn = document.getElementById('share-btn');
+            const originalIcon = shareBtn.innerHTML;
+            
+            // Ativa o loading no botão
+            shareBtn.innerHTML = '<div class="loader-sm"></div>';
+
+            try {
+                // Cria um título dinâmico na imagem final para dar contexto a quem recebe
+                const activeTabBtn = document.querySelector('.tab-btn.text-orange-600, .tab-btn.dark\\:text-orange-500');
+                const tabName = activeTabBtn ? activeTabBtn.innerText.trim() : 'Estatísticas';
+                
+                const titleEl = document.createElement('div');
+                titleEl.innerHTML = `<h2 class="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white mb-4 mt-2 text-center pb-2 border-b border-gray-200 dark:border-gray-700">🏆 Nossa Liga Cartola FC<br><span class="text-orange-600 dark:text-orange-500 text-lg">${tabName}</span></h2>`;
+                activeView.insertBefore(titleEl, activeView.firstChild);
+
+                // Configuração baseada no tema ativo
+                const isDark = document.documentElement.classList.contains('dark');
+                const bgColor = isDark ? '#111827' : '#f3f4f6'; // bg-gray-900 ou bg-gray-100
+
+                const tableContainer = activeView.querySelector('.overflow-x-auto');
+                const originalOverflow = tableContainer ? tableContainer.style.overflow : '';
+                if(tableContainer) {
+                    tableContainer.style.overflow = 'visible';
+                }
+
+                // Captura o painel
+                const canvas = await html2canvas(activeView, {
+                    backgroundColor: bgColor,
+                    scale: 2, // Maior qualidade (retina)
+                    useCORS: true,
+                    width: activeView.scrollWidth
+                });
+
+                // Restaura a interface
+                if(tableContainer) {
+                    tableContainer.style.overflow = originalOverflow;
+                }
+                activeView.removeChild(titleEl);
+
+                // Converte para blob e tenta partilhar nativamente
+                canvas.toBlob(async (blob) => {
+                    const filename = `cartola-${tabName.toLowerCase().replace(/\s/g, '-')}.png`;
+                    const file = new File([blob], filename, { type: 'image/png' });
+                    
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        await navigator.share({
+                            files: [file],
+                            title: 'Nossa Liga Cartola FC',
+                            text: `Acompanha a ${tabName} atualizada da nossa liga!`
+                        });
+                    } else {
+                        // Fallback para PC: Faz o download da imagem
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    }
+                }, 'image/png');
+
+            } catch(e) {
+                console.error('Erro ao partilhar:', e);
+                alert('Não foi possível gerar a imagem para partilhar. Verifica a tua ligação e tenta novamente.');
+            } finally {
+                // Restaura o ícone de partilha
+                shareBtn.innerHTML = originalIcon;
+                lucide.createIcons();
+            }
+        }
+
+        // Função Auxiliar que gera Dados Fictícios apenas para testes no Preview (Canvas)
+        function getMockData() {
+            return {
+                maxRound: 2,
+                appData: [
+                    {
+                        id: 26323967, nomeOriginal: 'GEORGE', escudoBase64: 'https://ui-avatars.com/api/?name=GE&background=ea580c&color=fff',
+                        history: [
+                            { rodada: 1, error: false, data: { pontos: 55.4, pontos_campeonato: 55.4, patrimonio: 105.2, time: { nome: 'George FC', nome_cartola: 'George' } } },
+                            { rodada: 2, error: false, data: { pontos: 78.1, pontos_campeonato: 133.5, patrimonio: 112.0, time: { nome: 'George FC', nome_cartola: 'George' } } }
+                        ]
+                    },
+                    {
+                        id: 26331075, nomeOriginal: 'XINGU', escudoBase64: 'https://ui-avatars.com/api/?name=XI&background=2563eb&color=fff',
+                        history: [
+                            { rodada: 1, error: false, data: { pontos: 62.0, pontos_campeonato: 62.0, patrimonio: 108.5, time: { nome: 'Xingu Team', nome_cartola: 'Xingu' } } },
+                            { rodada: 2, error: false, data: { pontos: 45.3, pontos_campeonato: 107.3, patrimonio: 106.1, time: { nome: 'Xingu Team', nome_cartola: 'Xingu' } } }
+                        ]
+                    },
+                    {
+                        id: 20129034, nomeOriginal: 'LEO', escudoBase64: 'https://ui-avatars.com/api/?name=LE&background=16a34a&color=fff',
+                        history: [
+                            { rodada: 1, error: false, data: { pontos: 48.2, pontos_campeonato: 48.2, patrimonio: 102.0, time: { nome: 'Leo Boys', nome_cartola: 'Leo' } } },
+                            { rodada: 2, error: false, data: { pontos: 85.0, pontos_campeonato: 133.2, patrimonio: 115.8, time: { nome: 'Leo Boys', nome_cartola: 'Leo' } } }
+                        ]
+                    },
+                    {
+                        id: 27110420, nomeOriginal: 'PAULO', escudoBase64: 'https://ui-avatars.com/api/?name=PA&background=9333ea&color=fff',
+                        history: [
+                            { rodada: 1, error: false, data: { pontos: 35.0, pontos_campeonato: 35.0, patrimonio: 98.5, time: { nome: 'Paulo AC', nome_cartola: 'Paulo' } } },
+                            { rodada: 2, error: false, data: { pontos: 60.0, pontos_campeonato: 95.0, patrimonio: 101.2, time: { nome: 'Paulo AC', nome_cartola: 'Paulo' } } }
+                        ]
+                    }
+                ]
+            };
+        }
+
+        // --- FETCH DA API OTIMIZADA DO GITHUB ---
+        async function fetchData() {
+            const loadingEl = document.getElementById('loading');
+            const tabsEl = document.getElementById('tabs-container');
+            const viewsEl = document.getElementById('views-container');
+            const errorEl = document.getElementById('error-message');
+            const errorTextEl = document.getElementById('error-text');
+            const mockWarning = document.getElementById('mock-warning');
+
+            loadingEl.classList.remove('hidden');
+            tabsEl.classList.add('hidden');
+            viewsEl.classList.add('hidden');
+            errorEl.classList.add('hidden');
+
+            try {
+                let json;
+                
+                // Verifica se está num ambiente de Pré-visualização (Canvas ou Ficheiro local)
+                if (window.location.protocol.includes('blob') || window.location.protocol === 'data:' || window.location.protocol === 'file:') {
+                    console.log("Ambiente de preview detetado. A carregar dados mockados...");
+                    // Aguarda 1 segundinho para simular carregamento
+                    await new Promise(r => setTimeout(r, 1000));
+                    json = getMockData();
+                    mockWarning.classList.remove('hidden');
+                } else {
+                    // Busca o ficheiro JSON estático do GitHub Actions no ambiente real
+                    const response = await fetch('./data.json?v=' + new Date().getTime());
+                    
+                    if (!response.ok) {
+                        throw new Error("Dados ainda não processados no servidor. Verifique a aba 'Actions' no GitHub ou aguarde o robô finalizar.");
+                    }
+                    json = await response.json();
+                }
+
+                appData = json.appData;
+                maxRound = json.maxRound;
+
+                // Renderizar abas
+                renderRankingRodadaSelector();
+
+                // Se já estivermos no segundo turno, abre automaticamente nele
+                premiacaoTurnoAtual = maxRound >= 20 ? 2 : 1;
+                renderRankingPremiacao(premiacaoTurnoAtual);
+
+                renderRanking();
+
+                // Atualizar UI
+                loadingEl.classList.add('hidden');
+                tabsEl.classList.remove('hidden');
+                viewsEl.classList.remove('hidden');
+                
+                lucide.createIcons();
+
+            } catch (error) {
+                console.error("Erro fatal ao carregar os dados:", error);
+                errorTextEl.textContent = error.message;
+                loadingEl.classList.add('hidden');
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        // --- SISTEMA DE ABAS ---
+        function changeTab(tabName) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('text-orange-600', 'dark:text-orange-500', 'border-orange-600', 'dark:border-orange-500', 'border-b-2', 'font-bold');
+                el.classList.add('text-gray-500', 'dark:text-gray-400', 'font-medium');
+            });
+
+            document.getElementById(`view-${tabName}`).classList.remove('hidden');
+            const activeTab = document.getElementById(`tab-${tabName}`);
+            activeTab.classList.remove('text-gray-500', 'dark:text-gray-400', 'font-medium');
+            activeTab.classList.add('text-orange-600', 'dark:text-orange-500', 'border-orange-600', 'dark:border-orange-500', 'border-b-2', 'font-bold');
+        }
+
+        // --- ABA: POR RODADA ---
+        function renderRankingRodadaSelector() {
+            let options = '';
+            for(let r = maxRound; r >= 1; r--) {
+                options += `<option value="${r}">Rodada ${r}</option>`;
+            }
+            const selectEl = document.getElementById('rodada-select');
+            selectEl.innerHTML = options;
+            selectEl.value = maxRound;
+            renderRankingRodada(maxRound);
+        }
+
+        function renderRankingRodada(rodadaStr) {
+            const rodada = parseInt(rodadaStr);
+            const mapped = appData.map(player => {
+                const roundData = player.history.find(h => h.rodada === rodada && !h.error)?.data;
+                const latest = player.history.filter(h => !h.error).pop()?.data; 
+                
+                return {
+                    nomeTime: roundData?.time?.nome || latest?.time?.nome || 'Desconhecido',
+                    nomeCartola: roundData?.time?.nome_cartola || latest?.time?.nome_cartola || player.nomeOriginal,
+                    escudo: player.escudoBase64,
+                    value: roundData?.pontos || 0
+                };
+            }).sort((a, b) => b.value - a.value);
+            
+            let rows = mapped.map((item, index) => {
+                const isMedal = index < 3;
+                const medalColors = ['text-yellow-500', 'text-gray-400', 'text-amber-600'];
+                const rankDisplay = isMedal 
+                    ? `<i data-lucide="medal" class="w-6 h-6 mx-auto ${medalColors[index]}"></i>` 
+                    : `<span class="font-bold text-gray-500 dark:text-gray-400 text-lg">${index + 1}º</span>`;
+
+                return `
+                    <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <td class="py-3 px-2 sm:px-4 text-center w-10 sm:w-16 align-middle">${rankDisplay}</td>
+                        <td class="py-3 px-2 sm:px-4 flex items-center gap-2 sm:gap-4">
+                            <img src="${item.escudo}" class="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-gray-200 dark:border-gray-600 shadow-sm object-contain bg-white dark:bg-gray-800 shrink-0">
+                            <div>
+                                <div class="font-bold text-gray-800 dark:text-gray-100 text-xs sm:text-base leading-tight break-words">${item.nomeTime}</div>
+                                <div class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words">${item.nomeCartola}</div>
+                            </div>
+                        </td>
+                        <td class="py-3 px-2 sm:px-4 text-right font-bold text-blue-600 dark:text-blue-400 text-sm sm:text-lg align-middle whitespace-nowrap">
+                            ${formatPoints(item.value)}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            document.getElementById('ranking-rodada-container').innerHTML = `
+                <div class="overflow-x-auto bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
+                    <table class="w-full text-sm text-left table-auto">
+                        <thead class="bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-400 uppercase text-[10px] sm:text-xs border-b border-gray-200 dark:border-gray-700">
+                            <tr>
+                                <th class="py-3 px-2 sm:px-4 w-10 sm:w-16 text-center font-bold">Pos</th>
+                                <th class="py-3 px-2 sm:px-4 font-bold">Time</th>
+                                <th class="py-3 px-2 sm:px-4 text-right font-bold">Pontos</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // --- ABA: PREMIAÇÃO POR TURNO ---
+        function renderRankingPremiacao(turno = premiacaoTurnoAtual) {
+            premiacaoTurnoAtual = turno;
+
+            // Define o intervalo de rodadas do turno
+            let rodadaInicial;
+            let rodadaFinal;
+            let tituloTurno;
+            let descricaoTurno;
+            let turnoFinalizado = false;
+
+            if (turno === 1) {
+                rodadaInicial = 1;
+                rodadaFinal = Math.min(19, maxRound);
+                tituloTurno = '1º Turno';
+                descricaoTurno = 'Rodadas 1 a 19';
+                turnoFinalizado = maxRound >= 19;
+            } else {
+                rodadaInicial = 20;
+                rodadaFinal = maxRound;
+                tituloTurno = '2º Turno';
+                descricaoTurno = maxRound >= 20
+                    ? `Rodadas 20 a ${maxRound}`
+                    : 'Rodadas 20 a 38';
+            }
+
+            // Inicializa estrutura dos participantes
+            const premios = {};
+
+            appData.forEach(player => {
+                // Para o 1º turno, usa como referência o último dado disponível até a rodada 19.
+                // Para o 2º turno, usa o dado mais recente disponível.
+                const historicoDoTurno = player.history.filter(
+                    h => !h.error && h.rodada >= rodadaInicial && h.rodada <= rodadaFinal
+                );
+
+                const historicoValido = player.history.filter(h => !h.error);
+
+                const latest = historicoDoTurno.length > 0
+                    ? historicoDoTurno[historicoDoTurno.length - 1].data
+                    : historicoValido[historicoValido.length - 1]?.data;
+
+                premios[player.id] = {
+                    nomeOriginal: player.nomeOriginal,
+                    id: player.id,
+                    totalGanho: 0,
+                    totalGasto: 0,
+                    vitorias: 0,
+                    segundos: 0,
+                    latestData: latest,
+                    escudoBase64: player.escudoBase64
+                };
+            });
+
+            // Calcula a premiação apenas das rodadas do turno selecionado
+            if (rodadaInicial <= rodadaFinal) {
+                for (let r = rodadaInicial; r <= rodadaFinal; r++) {
+                    const roundResults = [];
+
+                    appData.forEach(player => {
+                        const roundData = player.history.find(
+                            h => h.rodada === r && !h.error
+                        )?.data;
+
+                        if (roundData && roundData.pontos !== undefined) {
+                            roundResults.push({
+                                id: player.id,
+                                pontos: roundData.pontos
+                            });
+
+                            // Cada jogador investe R$ 5,00 por rodada
+                            premios[player.id].totalGasto += 5.00;
+                        }
+                    });
+
+                    roundResults.sort((a, b) => b.pontos - a.pontos);
+
+                    // 1º lugar
+                    if (roundResults.length > 0) {
+                        premios[roundResults[0].id].totalGanho += 24.00;
+                        premios[roundResults[0].id].vitorias += 1;
+                    }
+
+                    // 2º lugar
+                    if (roundResults.length > 1) {
+                        premios[roundResults[1].id].totalGanho += 6.00;
+                        premios[roundResults[1].id].segundos += 1;
+                    }
+                }
+            }
+
+            // Prepara o ranking
+            const mapped = Object.values(premios).map(p => {
+                const saldoLiquido = p.totalGanho - p.totalGasto;
+
+                return {
+                    nomeTime: p.latestData?.time?.nome || 'Desconhecido',
+                    nomeCartola: p.latestData?.time?.nome_cartola || p.nomeOriginal,
+                    escudo: p.escudoBase64,
+                    ganho: p.totalGanho,
+                    gasto: p.totalGasto,
+                    saldo: saldoLiquido,
+                    detalhes: `${p.vitorias}x Ouro, ${p.segundos}x Prata`
+                };
+            }).sort((a, b) => b.saldo - a.saldo);
+
+            // Monta as linhas da tabela
+            const rows = mapped.map((item, index) => {
+                const isMedal = index < 3;
+                const medalColors = ['text-yellow-500', 'text-gray-400', 'text-amber-600'];
+
+                const rankDisplay = isMedal
+                    ? `<i data-lucide="medal" class="w-6 h-6 mx-auto ${medalColors[index]}"></i>`
+                    : `<span class="font-bold text-gray-500 dark:text-gray-400 text-lg">${index + 1}º</span>`;
+
+                let saldoColor = 'text-gray-600 dark:text-gray-400';
+                if (item.saldo > 0) saldoColor = 'text-green-600 dark:text-green-400';
+                if (item.saldo < 0) saldoColor = 'text-red-500 dark:text-red-400';
+
+                return `
+                    <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <td class="py-3 px-2 sm:px-4 text-center w-10 sm:w-16 align-middle">${rankDisplay}</td>
+                        <td class="py-3 px-2 sm:px-4 flex items-center gap-2 sm:gap-4">
+                            <img src="${item.escudo}" class="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-gray-200 dark:border-gray-600 shadow-sm object-contain bg-white dark:bg-gray-800 shrink-0">
+                            <div>
+                                <div class="font-bold text-gray-800 dark:text-gray-100 text-xs sm:text-base leading-tight break-words">${item.nomeTime}</div>
+                                <div class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words">
+                                    ${item.nomeCartola}
+                                    <span class="text-amber-600 dark:text-amber-500 font-medium ml-1 block sm:inline">(${item.detalhes})</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-3 px-2 sm:px-4 text-center text-red-400 dark:text-red-300 align-middle hidden md:table-cell text-sm whitespace-nowrap">
+                            -${formatReal(item.gasto)}
+                        </td>
+                        <td class="py-3 px-2 sm:px-4 text-center text-green-500 dark:text-green-400 align-middle hidden md:table-cell text-sm whitespace-nowrap">
+                            ${formatReal(item.ganho)}
+                        </td>
+                        <td class="py-3 px-2 sm:px-4 text-right font-bold ${saldoColor} text-sm sm:text-lg align-middle whitespace-nowrap">
+                            ${formatReal(item.saldo)}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Estado visual dos botões
+            const btnTurno1Class = turno === 1
+                ? 'bg-orange-600 text-white shadow-sm'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600';
+
+            const btnTurno2Class = turno === 2
+                ? 'bg-orange-600 text-white shadow-sm'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600';
+
+            // Status do turno
+            let statusTurno = '';
+
+            if (turno === 1 && turnoFinalizado) {
+                statusTurno = `
+                    <span class="inline-flex items-center gap-1 text-xs font-bold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded-full">
+                        ✓ Turno Finalizado
+                    </span>
+                `;
+            } else if (turno === 2 && maxRound >= 20) {
+                statusTurno = `
+                    <span class="inline-flex items-center gap-1 text-xs font-bold text-blue-700 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-full">
+                        Em andamento
+                    </span>
+                `;
+            }
+
+            // Renderiza interface
+            document.getElementById('ranking-premiacao-container').innerHTML = `
+                <!-- Seletor de Turnos -->
+                <div class="flex justify-center mb-5">
+                    <div class="inline-flex bg-white dark:bg-gray-800 p-1 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 gap-1">
+                        <button
+                            onclick="renderRankingPremiacao(1)"
+                            class="px-4 sm:px-6 py-2 rounded-lg text-sm font-bold transition-all ${btnTurno1Class}">
+                            🏆 1º Turno
+                        </button>
+
+                        <button
+                            onclick="renderRankingPremiacao(2)"
+                            class="px-4 sm:px-6 py-2 rounded-lg text-sm font-bold transition-all ${btnTurno2Class} ${maxRound < 20 ? 'opacity-50 cursor-not-allowed' : ''}"
+                            ${maxRound < 20 ? 'disabled' : ''}>
+                            🏆 2º Turno
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Cabeçalho do Turno -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 mb-4 text-center">
+                    <div class="flex flex-col sm:flex-row items-center justify-center gap-2">
+                        <h2 class="text-lg sm:text-xl font-bold text-gray-800 dark:text-gray-100">${tituloTurno}</h2>
+                        ${statusTurno}
+                    </div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">${descricaoTurno}</p>
+                </div>
+
+                <!-- Regras -->
+                <div class="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 p-3 sm:p-4 rounded-xl mb-4 text-xs sm:text-sm text-center shadow-sm">
+                    <p>
+                        <strong>Regras por rodada:</strong>
+                        Fundo de R$ 30,00 (R$ 5,00 por jogador).
+                        <br class="hidden sm:block">
+                        🥇 1º: R$ 24,00 | 🥈 2º: R$ 6,00
+                    </p>
+                </div>
+
+                <!-- Tabela -->
+                <div class="overflow-x-auto bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
+                    <table class="w-full text-sm text-left table-auto">
+                        <thead class="bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-400 uppercase text-[10px] sm:text-xs border-b border-gray-200 dark:border-gray-700">
+                            <tr>
+                                <th class="py-3 px-2 sm:px-4 w-10 sm:w-16 text-center font-bold">Pos</th>
+                                <th class="py-3 px-2 sm:px-4 font-bold">Time</th>
+                                <th class="py-3 px-2 sm:px-4 text-center font-bold hidden md:table-cell">Investido</th>
+                                <th class="py-3 px-2 sm:px-4 text-center font-bold hidden md:table-cell">Prêmios</th>
+                                <th class="py-3 px-2 sm:px-4 text-right font-bold">Saldo</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            `;
+
+            lucide.createIcons();
+        }
+
+        // --- ABA: RANKING UNIFICADO (Ordenável) ---
+        function toggleSort(column) {
+            if (rankingSortConfig.column === column) {
+                // Inverte a direção se for a mesma coluna
+                rankingSortConfig.direction = rankingSortConfig.direction === 'desc' ? 'asc' : 'desc';
+            } else {
+                // Muda a coluna e define descrescente por padrão
+                rankingSortConfig.column = column;
+                rankingSortConfig.direction = 'desc';
+            }
+            renderRanking();
+        }
+
+        function renderRanking() {
+            // Prepara os dados
+            const mapped = appData.map(player => {
+                const latest = player.history.filter(h => !h.error).pop()?.data;
+                
+                return {
+                    nomeTime: latest?.time?.nome || 'Desconhecido',
+                    nomeCartola: latest?.time?.nome_cartola || player.nomeOriginal,
+                    escudo: player.escudoBase64,
+                    pontos: latest?.pontos_campeonato || 0,
+                    patrimonio: latest?.patrimonio || 0
+                };
+            });
+
+            // Ordena com base no estado atual
+            mapped.sort((a, b) => {
+                let valA = a[rankingSortConfig.column];
+                let valB = b[rankingSortConfig.column];
+                
+                if (rankingSortConfig.direction === 'desc') {
+                    return valB - valA;
+                } else {
+                    return valA - valB;
+                }
+            });
+
+            // Monta as linhas
+            let rows = mapped.map((item, index) => {
+                const isMedal = index < 3 && rankingSortConfig.direction === 'desc'; // Só dá medalhas se for ordem decrescente normal
+                const medalColors = ['text-yellow-500', 'text-gray-400', 'text-amber-600'];
+                const rankDisplay = isMedal 
+                    ? `<i data-lucide="medal" class="w-6 h-6 mx-auto ${medalColors[index]}"></i>` 
+                    : `<span class="font-bold text-gray-500 dark:text-gray-400 text-lg">${index + 1}º</span>`;
+
+                // Destaca visualmente a coluna que está a ser ordenada
+                const isSortPontos = rankingSortConfig.column === 'pontos';
+                const pontosClass = isSortPontos ? 'text-blue-700 dark:text-blue-400 font-extrabold' : 'text-blue-500 dark:text-blue-300 font-semibold';
+                const patClass = !isSortPontos ? 'text-yellow-600 dark:text-yellow-400 font-extrabold' : 'text-yellow-500 dark:text-yellow-300 font-semibold';
+
+                return `
+                    <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <td class="py-3 px-2 sm:px-4 text-center w-10 sm:w-16 align-middle">${rankDisplay}</td>
+                        <td class="py-3 px-2 sm:px-4 flex items-center gap-2 sm:gap-4">
+                            <img src="${item.escudo}" class="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-gray-200 dark:border-gray-600 shadow-sm object-contain bg-white dark:bg-gray-800 shrink-0">
+                            <div>
+                                <div class="font-bold text-gray-800 dark:text-gray-100 text-xs sm:text-base leading-tight break-words">${item.nomeTime}</div>
+                                <div class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words">${item.nomeCartola}</div>
+                            </div>
+                        </td>
+                        <td class="py-3 px-2 sm:px-4 text-center align-middle text-sm sm:text-lg whitespace-nowrap ${pontosClass}">
+                            ${formatPoints(item.pontos)}
+                        </td>
+                        <td class="py-3 px-2 sm:px-4 text-right align-middle text-sm sm:text-lg whitespace-nowrap ${patClass}">
+                            ${formatMoney(item.patrimonio)}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Lógica para desenhar as setinhas no cabeçalho
+            const sortIcon = rankingSortConfig.direction === 'desc' ? 'arrow-down' : 'arrow-up';
+            
+            const pontosHeaderIcon = rankingSortConfig.column === 'pontos' 
+                ? `<i data-lucide="${sortIcon}" class="w-3 h-3 sm:w-4 sm:h-4 inline-block text-orange-600 dark:text-orange-500"></i>` : '';
+                
+            const patHeaderIcon = rankingSortConfig.column === 'patrimonio' 
+                ? `<i data-lucide="${sortIcon}" class="w-3 h-3 sm:w-4 sm:h-4 inline-block text-orange-600 dark:text-orange-500"></i>` : '';
+
+            document.getElementById('ranking-geral-container').innerHTML = `
+                <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 p-3 rounded-xl mb-4 text-xs sm:text-sm text-center shadow-sm">
+                    <p><i data-lucide="info" class="w-4 h-4 inline-block relative -top-0.5 mr-1"></i> Toque nos títulos das colunas para alterar a ordenação do ranking.</p>
+                </div>
+                <div class="overflow-x-auto bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
+                    <table class="w-full text-sm text-left table-auto">
+                        <thead class="bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-400 uppercase text-[10px] sm:text-xs border-b border-gray-200 dark:border-gray-700">
+                            <tr>
+                                <th class="py-3 px-2 sm:px-4 w-10 sm:w-16 text-center font-bold">Pos</th>
+                                <th class="py-3 px-2 sm:px-4 font-bold">Time</th>
+                                <th class="py-3 px-2 sm:px-4 text-center font-bold cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 select-none transition-colors whitespace-nowrap" onclick="toggleSort('pontos')">
+                                    <div class="flex items-center justify-center gap-1">Pontos ${pontosHeaderIcon}</div>
+                                </th>
+                                <th class="py-3 px-2 sm:px-4 text-right font-bold cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 select-none transition-colors whitespace-nowrap" onclick="toggleSort('patrimonio')">
+                                    <div class="flex items-center justify-end gap-1">Patrimônio ${patHeaderIcon}</div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // Iniciar busca assim que a página carregar
+        document.addEventListener('DOMContentLoaded', fetchData);
+
+        // Registrar o Service Worker para transformar em PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+                    navigator.serviceWorker.register('sw.js')
+                        .then(registration => console.log('PWA Service Worker registado!'))
+                        .catch(err => console.warn('Aviso: Service Worker não registado (normal em modo preview).', err));
+                } else {
+                    console.log('Modo PWA inativo: O Service Worker requer hospedagem real (HTTP/HTTPS) para funcionar.');
+                }
+            });
+        }
+    </script>
+</body>
+</html>
